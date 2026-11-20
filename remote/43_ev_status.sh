@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 ROOT=/root/autodl-tmp/CIE6004_ASGN2
 ps -eo pid,etime,pcpu,args | grep -E "render_views|make_orbit|frames_to_gif|python" | grep -v grep | cut -c1-130
 echo ---

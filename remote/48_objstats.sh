@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 ROOT=/root/autodl-tmp/CIE6004_ASGN2
 cd $ROOT
 source env/bin/activate

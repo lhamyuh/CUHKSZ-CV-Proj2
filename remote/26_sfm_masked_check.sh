@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 ROOT=/root/autodl-tmp/CIE6004_ASGN2
 D=$ROOT/runs/obj_sfm_m
 echo "--- feat ---"; tail -c 200 $D/feat.log 2>/dev/null

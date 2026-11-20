@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 ROOT=/root/autodl-tmp/CIE6004_ASGN2
 ps -eo pid,etime,pcpu,args | grep colmap | grep -v grep | cut -c1-120
 echo "=== match tail ==="

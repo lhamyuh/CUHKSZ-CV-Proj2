@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 ROOT=/root/autodl-tmp/CIE6004_ASGN2
 ls -l /root/.cache/torch/hub/checkpoints/ 2>/dev/null
 du -sh /root/.cache/torch 2>/dev/null

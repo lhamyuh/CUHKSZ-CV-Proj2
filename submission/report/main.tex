@@ -1,4 +1,4 @@
-﻿% CIE 6004 Assignment 2 report
+% CIE 6004 Assignment 2 report
 \documentclass[10pt,twocolumn,letterpaper]{article}
 \usepackage[review]{cvpr}
 \input{preamble}
@@ -139,6 +139,15 @@ fixed. Masked PSNR over three held-out validation views rises from 16.23 to 18.2
 front view improves from 20.63 to 23.90\,dB. Silhouette IoU against the \emph{undilated}
 reference mask drops slightly (0.834 to 0.811), which is expected: the variant deliberately covers
 two extra pixels, so this number is biased against the change and we report it rather than hide it.
+The dilated variant is therefore the deliverable model; it also renders the cleaner orbit
+(Fig.~\ref{fig:ablation}).
+
+\paragraph{Post-processing of the delivered model.} White-background training leaves 64\% of the
+Gaussians below 0.15 opacity (median 0.08), which is the white haze visible in the orbit. We prune
+Gaussians that project outside the masks in most training views (visibility ratio below 0.75),
+drop opacity below 0.05 and log-scales above 0.12, and remap the remaining opacity in logit space
+($1.9x+1.3$). The final model keeps 65\,246 of 129\,512 Gaussians with a median opacity of 0.23;
+the orbit no longer shows a milky veil, although a few bright specks survive on the top plate.
 
 \begin{figure}[t]
 \centering
@@ -177,13 +186,29 @@ and the inlier spread a radius of 0.99 scene units; the camera sits 0.78 units a
 The two independent estimates agree, which fixes the metric scale to roughly one unit per metre.
 
 \paragraph{Scale and transform.} The object's pruned point cloud has a PCA frame in which the body
-width, height and depth measure 5.28, 2.99 and 2.13 units. An OM-2 body is 136\,mm wide, so the
-uniform scale is $s=0.090$ and the resulting object is 13.6\,cm wide, 7.7\,cm tall and 5.5\,cm deep.
+width, height and depth measure 2.41, 1.95 and 1.40 units. An OM-2 body is 136\,mm wide, so the
+uniform scale is $s=0.0566$ and the resulting object is 13.6\,cm wide, 11.0\,cm tall and 7.9\,cm deep.
 The transform is a similarity: positions are mapped by $sR p + t$, log-scales are offset by
 $\log s$, and rotations are left-multiplied by the quaternion of $R$; this is exactly what
 \texttt{fusion/placement.json} stores as a $4\times4$ matrix acting on column vectors.
 
-\paragraph{Occlusion.} The camera is placed on the table 0.45 units from the vase, with its lens
+\paragraph{Grounding and contact.} The first placement left the object 47.7\,mm above the table:
+the transform used the model's bounding-box centre, not its base. We now measure the height
+percentiles of the transformed Gaussians and shift the object until the 10th percentile sits on the
+fitted plane, which removes the visible gap while keeping the sparse downward outliers inside the
+table. Because the underside of the captured object was never observed, we also add a thin disc of
+4\,000 contact Gaussians at the footprint ($r\approx0.042$\,units) and darken the table Gaussians
+under it by $1-0.7\exp(-r^{2}/2\sigma^{2})$, $\sigma=0.12$\,units (17\,731 Gaussians, minimum
+factor 0.30). The disc gives the contact a silhouette; the darkening gives it a shadow.
+
+\paragraph{Illumination.} We sampled 22\,979 table Gaussians within 0.12--0.60 units of the object
+and used their 60th luminance percentile as the local illuminant. The object's SH DC is scaled by
+$0.92\,\ell_{\text{table}}/\ell_{\text{obj}}$ with a vertical ambient-occlusion gradient
+(0.80 at the base, 1.12 at the top) and a 30\% warm tint. A separate check on the Garden renders
+shows that the mean luminance of our renders already matches the references to within
+$\pm1\%$ (mean ratio 0.998, std 0.010 over 12 views), so no global exposure correction is applied.
+
+\paragraph{Occlusion.} The camera is placed on the table 0.72 units from the vase, with its lens
 axis toward the first frame of the shot. The 240-frame, 10\,s path arcs $185^{\circ}$ around the
 table at 1.9\,units radius and 1.26\,units height. It starts with the vase overlapping the object,
 which makes the first second a genuine depth-ordering test, and the arc then slides the vase off
@@ -200,31 +225,37 @@ overlaps it at the start of the arc, and it is fully visible at the end.}
 \label{fig:fusion}
 \end{figure}
 
-\section{Bonus: a contact-shadow pass and what it did \emph{not} fix}
+\section{Bonus: grounding, contact shadow and illumination match}
 
-The basic render has three artefacts: no contact shadow, a brightness mismatch between the
-object and the table, and the table showing through the object's silhouette. We implemented a
-post-hoc shading pass on the merged point cloud, without adding geometry: (i) table Gaussians
-lying within 0.40 units of the object base and within 3\,cm of the table plane have their SH DC
-term multiplied by $1-0.8\exp(-r^{2}/2\sigma^{2})$ with $\sigma=0.16$\,units, which darkens
-29\,318 Gaussians (minimum factor 0.20) and reads as a soft contact shadow; (ii) the object's SH
-DC is scaled by 0.90 toward the local table brightness. Fig.~\ref{fig:bonus} compares the same
-camera and placement before and after.
+The first fusion had three visible artefacts: the object floated 47.7\,mm above the table, it had
+no shadow, and its brightness did not match the table (object mean luminance 0.359 against 0.591).
+We address all three without touching the scene reconstruction:
 
-The honest result is that the pass helps less than expected. The darkened ring is visible, but
-the object still lacks a \emph{cast} shadow with a direction that matches the garden's light, and
-the silhouette still shows table Gaussians at grazing angles because those splats are physically
-in front of the object's thin edges and no brightness change can out-vote them in the rasteriser.
-The principled fix is depth-aware occlusion culling during training (or a shadow map from the
-scene's dominant light direction), which we did not attempt; we report the negative result rather
-than claim a visual improvement that the evidence does not support.
+\begin{itemize}\itemsep2pt
+\item \textbf{Grounding.} Shift the object along the table normal until the 10th height percentile
+touches the fitted plane (the 1st percentile is a downward floater). Clearance goes from 47.7\,mm
+to 0 by construction.
+\item \textbf{Contact disc.} The captured underside was never observed, so we add 4\,000 thin
+Gaussians on the footprint ($r=0.042$\,units, scale $11$\,mm $\times$ $1.5$\,mm) coloured at 55\%
+of the table albedo. This gives the contact a silhouette instead of a see-through gap.
+\item \textbf{Shadow.} Table Gaussians within 0.04\,units of the plane under the object are
+darkened by $1-0.7\exp(-r^{2}/2\sigma^{2})$, $\sigma=0.12$: 17\,731 Gaussians, minimum factor 0.30.
+\item \textbf{Illumination.} Object SH DC is scaled toward the local table illuminant
+($0.92\,\ell_{\text{table}}/\ell_{\text{obj}}$) with a vertical AO gradient and a 30\% warm tint.
+\end{itemize}
+
+Fig.~\ref{fig:bonus} shows the matched before/after pair from the same camera and placement: the
+object now sits on the table with a soft contact shadow and reads as part of the scene. What the
+pass still does not produce is a \emph{directional} cast shadow matching the garden's light; that
+needs a shadow map or depth-aware culling, which we did not implement. A few white specks from the
+white-background training also survive on the top plate.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{fig/bonus.jpg}
-\caption{Bonus pass, matched viewpoint: before (left) and after (right) darkening 29\,k table
-Gaussians under the object. The contact darkening is visible; a directional cast shadow is not
-produced.}
+\caption{Bonus pass, matched viewpoint: basic (left) versus grounding + contact disc +
+shadow + illumination match (right). The object now sits on the table with a visible soft shadow;
+a directional cast shadow is still missing.}
 \label{fig:bonus}
 \end{figure}
 

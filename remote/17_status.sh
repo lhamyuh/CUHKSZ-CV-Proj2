@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 ROOT=/root/autodl-tmp/CIE6004_ASGN2
 echo "=== procs ==="
 ps -eo pid,etime,pcpu,pmem,args | grep -E "run_masks|colmap|train.py" | grep -v grep | cut -c1-140

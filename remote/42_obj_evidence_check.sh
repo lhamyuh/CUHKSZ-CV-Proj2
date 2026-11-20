@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 ROOT=/root/autodl-tmp/CIE6004_ASGN2
 M=$ROOT/runs/obj_w
 ls $M/orbit_frames 2>/dev/null | wc -l

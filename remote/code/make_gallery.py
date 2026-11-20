@@ -118,7 +118,7 @@ def main():
     # ---------- C: fusion ----------
     frames = []
     for i in ("000", "060", "120", "180", "239"):
-        im = load(os.path.join(R, f"runs/fusion/frames5/frame_{i}.png"))
+        im = load(os.path.join(R, f"runs/fusion/final_frames/frame_{i}.png"))
         frames.append(labelled(fit(im, 420), f"{int(i)/24:.1f} s"))
     row = Image.new("RGB", (sum(i.width for i in frames), frames[0].height), "white")
     x = 0
@@ -129,7 +129,7 @@ def main():
 
     # ---------- media ----------
     shutil.copy(os.path.join(R, "preview/scene_orbit.mp4"), os.path.join(G, "media/scene_orbit.mp4"))
-    shutil.copy(os.path.join(R, "preview/fusion5.mp4"), os.path.join(G, "media/fusion_orbit.mp4"))
+    shutil.copy(os.path.join(R, "preview/fusion_final.mp4"), os.path.join(G, "media/fusion_orbit.mp4"))
 
     # ---------- index ----------
     metrics = json.load(open(os.path.join(R, "runs/garden_base/metrics_val.json")))

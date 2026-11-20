@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 ROOT=/root/autodl-tmp/CIE6004_ASGN2
 echo "--- renders ---"
 ls $ROOT/runs/garden_base/renders_val 2>/dev/null | wc -l

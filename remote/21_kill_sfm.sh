@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 pkill -9 -f exhaustive_matcher && echo "matcher killed"
 pkill -9 -f "colmap mapper" 2>/dev/null
 sleep 1
