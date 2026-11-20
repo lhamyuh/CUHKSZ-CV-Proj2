@@ -27,7 +27,12 @@ in the submission zip and on the GPU server.
 | Object split | train 285 / val 33 / test 164 frames, 8-frame gaps |
 | Object SfM | 498/498 frames registered, 10,939 points, 0.61 px reprojection |
 | Mask ablation | masked PSNR 16.23 -> 18.23 dB with +2 px dilation, same budget |
+| Delivered object | initial model (16.2 dB) + light k-NN smoothing, cleaner orbit than the dilated model |
 | Fusion | 4.29M Gaussians, 240 frames, 24 fps, 10 s, 1280x720 |
+
+Negative results kept in the report: 45k iterations (+0.09 dB), black-background retrain (no
+gain, darker thin parts), 40k dense run (more fringe), 2x upscaled retrain (13.7 vs 18.2 dB
+masked PSNR), needle-splat filter (removed 30% of Gaussians, more holes).
 
 ## Reproduce
 
