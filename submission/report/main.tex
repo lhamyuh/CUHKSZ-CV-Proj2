@@ -205,8 +205,8 @@ factor 0.30). The disc gives the contact a silhouette; the darkening gives it a 
 
 \paragraph{Illumination.} We sampled 22\,979 table Gaussians within 0.12--0.60 units of the object
 and used their 60th luminance percentile as the local illuminant. The object's SH DC is scaled by
-$0.92\,\ell_{\text{table}}/\ell_{\text{obj}}$ with a vertical ambient-occlusion gradient
-(0.80 at the base, 1.12 at the top) and a 30\% warm tint. A separate check on the Garden renders
+$0.92\,\ell_{\text{table}}/\ell_{\text{obj}}$ with a vertical AO gradient (0.80 base, 1.12 top), a 30\% warm tint and a k-NN median
+smoothing pass on colour, opacity and scale. A separate check on the Garden renders
 shows that the mean luminance of our renders already matches the references to within
 $\pm1\%$ (mean ratio 0.998, std 0.010 over 12 views), so no global exposure correction is applied.
 
@@ -240,8 +240,9 @@ to 0 by construction.
 \item \textbf{Contact disc.} The captured underside was never observed, so we add 4\,000 thin
 Gaussians on the footprint ($r=0.042$\,units, scale $11$\,mm $\times$ $1.5$\,mm) coloured at 55\%
 of the table albedo. This gives the contact a silhouette instead of a see-through gap.
-\item \textbf{Shadow.} Table Gaussians within 0.04\,units of the plane under the object are
-darkened by $1-0.7\exp(-r^{2}/2\sigma^{2})$, $\sigma=0.12$: 17\,731 Gaussians, minimum factor 0.30.
+\item \textbf{Shadow.} Table Gaussians within 0.04\,units of the plane are darkened by
+$1-0.85\exp(-r^{2}/2\sigma^{2})$ ($\sigma=0.17$, offset along the light direction; 59k Gaussians,
+minimum factor 0.06), plus a contact term (0.6, radius 0.20) under the footprint.
 \item \textbf{Illumination.} Object SH DC is scaled toward the local table illuminant
 ($0.92\,\ell_{\text{table}}/\ell_{\text{obj}}$) with a vertical AO gradient and a 30\% warm tint.
 \end{itemize}
