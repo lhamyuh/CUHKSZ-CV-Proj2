@@ -60,8 +60,11 @@ def main():
         w = np.full(len(xyz), -1.0)
         u[ok] = fx * cam[ok, 0] / z[ok] + W / 2
         w[ok] = fy * cam[ok, 1] / z[ok] + H / 2
-        ui = np.clip(u, 0, W - 1).astype(int)
-        wi = np.clip(w, 0, H - 1).astype(int)
+        mh, mw = m.shape[0], m.shape[1]
+        su = mw / float(W)
+        sv = mh / float(H)
+        ui = np.clip(u * su, 0, mw - 1).astype(int)
+        wi = np.clip(w * sv, 0, mh - 1).astype(int)
         inside = ok & (u >= 0) & (u < W) & (w >= 0) & (w < H) & m[wi, ui]
         ratios += inside.astype(np.float32)
     ratios /= max(len(cams), 1)

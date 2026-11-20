@@ -30,6 +30,7 @@ def main():
     p.add_argument("--min_obs", type=int, default=2)
     p.add_argument("--bg", type=int, default=255, help="background value outside the mask (0 or 255)")
     p.add_argument("--dilate", type=int, default=0, help="dilate masks by N pixels before use")
+    p.add_argument("--upscale", type=int, default=1, help="resize images (and intrinsics) by this factor")
     args = p.parse_args()
 
     split = json.load(open(args.split))
@@ -63,6 +64,12 @@ def main():
             import cv2
             k = np.ones((args.dilate * 2 + 1,) * 2, np.uint8)
             m = cv2.dilate((m > 127).astype(np.uint8) * 255, k, iterations=1)
+        if args.upscale > 1:
+            from PIL import Image as _I
+            W2 = rgb.shape[1] * args.upscale
+            H2 = rgb.shape[0] * args.upscale
+            rgb = np.asarray(_I.fromarray(rgb).resize((W2, H2), _I.LANCZOS))
+            m = np.asarray(_I.fromarray(m).resize((W2, H2), _I.NEAREST))
         bg = np.full_like(rgb, args.bg, dtype=np.uint8)
         comp = np.where((m > 127)[..., None], rgb, bg)
         Image.fromarray(comp, "RGB").save(os.path.join(img_out, stem + ".png"))
@@ -105,6 +112,11 @@ def main():
         im2 = dict(im)
         im2["name"] = stem + ".png"
         new_imgs[iid] = im2
+    if args.upscale > 1:
+        for cid, c in cams.items():
+            c["width"] *= args.upscale
+            c["height"] *= args.upscale
+            c["params"] = [p * args.upscale for p in c["params"]]
     write_cameras(os.path.join(sp, "cameras.bin"), cams)
     write_images(os.path.join(sp, "images.bin"), new_imgs)
     write_points3d(os.path.join(sp, "points3D.bin"), kept_pts)

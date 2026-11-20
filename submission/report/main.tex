@@ -134,9 +134,11 @@ front view improves from 20.63 to 23.90\,dB. Silhouette IoU against the \emph{un
 reference mask drops slightly (0.834 to 0.811), which is expected: the variant deliberately covers
 two extra pixels, so this number is biased against the change and we report it rather than hide it.
 The dilated variant is therefore the deliverable model; it also renders the cleaner orbit
-(Fig.~\ref{fig:ablation}). Two further variants did \emph{not} help: a black-background retrain
-removes the white halo but darkens the thin parts, and a 40k dense run (gradient threshold
-$10^{-4}$, densify to 20k) adds lens detail at the cost of more boundary fringes. The remaining
+(Fig.~\ref{fig:ablation}). Three further variants did \emph{not} help: a black-background retrain removes the white halo but
+darkens the thin parts; a 40k dense run (gradient threshold $10^{-4}$, densify to 20k) adds lens
+detail at the cost of more boundary fringes; and training on 2x upscaled frames (812x1440) drops
+masked PSNR from 18.2 to 13.7\,dB, because Lanczos upscaling smears the mask boundary into the
+object before training. The remaining
 fragmentation is bounded by the capture, not by the training recipe: the body occupies about a
 quarter of a $406\times720$ frame, so levers and strap lugs are only 2--4 pixels wide.
 
