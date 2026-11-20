@@ -1,5 +1,12 @@
 # CIE 6004 Assignment 2 — Garden 3DGS, object reconstruction, fusion
 
+Student: **Linyu YANG (226010334)**.
+
+Submission archive: `submission/226010334_LinyuYANG.zip` (45.8 MB), also published as a release
+asset. Model weights, `cfg_args`, COLMAP model, logs and checksums are the second release asset
+`records_226010334_LinyuYANG.tar.gz` (922 MB):
+<https://github.com/lhamyuh/CUHKSZ-CV-Proj2/releases/tag/v2.0-final>
+
 This repository keeps the code, report source and experiment notes for Assignment 2.
 Large course data, rendered videos and intermediate images are **not** tracked; they live
 in the submission zip and on the GPU server.

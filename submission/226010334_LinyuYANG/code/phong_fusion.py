@@ -1,0 +1,316 @@
+"""Phong-style relighting + directional soft shadow for the inserted object.
+
+Pipeline
+  1. ground the object on the fitted table plane (height percentile),
+  2. estimate local normals with k-NN PCA,
+  3. estimate the scene illuminant from the table Gaussians (ambient level, diffuse range,
+     horizontal light direction),
+  4. shade the object with ambient + diffuse + specular terms,
+  5. project an elliptical shadow on the table along the light direction, multiplicative so the
+     wood texture stays visible.
+
+  python code/phong_fusion.py --scene ... --object ... --placement ... \
+      --out_scene ... --out_placement ... --view_pos x,y,z
+"""
+import argparse
+import json
+import math
+
+import numpy as np
+from plyfile import PlyData, PlyElement
+from scipy.spatial import cKDTree
+
+C0 = 0.28209479177387814
+
+
+def rotmat2qvec(R):
+    Rxx, Ryx, Rzx, Rxy, Ryy, Rzy, Rxz, Ryz, Rzz = R.flat
+    K = np.array([
+        [Rxx - Ryy - Rzz, 0, 0, 0],
+        [Ryx + Rxy, Ryy - Rxx - Rzz, 0, 0],
+        [Rzx + Rxz, Rzy + Ryz, Rzz - Rxx - Ryy, 0],
+        [Ryz - Rzy, Rzx - Rxz, Rxy - Ryx, Rxx + Ryy + Rzz]]) / 3.0
+    vals, vecs = np.linalg.eigh(K)
+    q = vecs[[3, 0, 1, 2], np.argmax(vals)]
+    return -q if q[0] < 0 else q
+
+
+def qmul(a, b):
+    w1, x1, y1, z1 = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
+    w2, x2, y2, z2 = b[..., 0], b[..., 1], b[..., 2], b[..., 3]
+    return np.stack([
+        w1 * w2 - x1 * x2 - y1 * y2 - z1 * z2,
+        w1 * x2 + x1 * w2 + y1 * z2 - z1 * y2,
+        w1 * y2 - x1 * z2 + y1 * w2 + z1 * x2,
+        w1 * z2 + x1 * y2 - y1 * x2 + z1 * w2], axis=-1)
+
+
+def estimate_normals(P, k=24):
+    tree = cKDTree(P)
+    _, idx = tree.query(P, k=k)
+    N = np.zeros_like(P)
+    for i in range(len(P)):
+        nb = P[idx[i]] - P[idx[i]].mean(0)
+        w, v = np.linalg.eigh(nb.T @ nb)
+        N[i] = v[:, 0]
+    c = P.mean(0)
+    flip = np.einsum("ij,ij->i", N, P - c) < 0
+    N[flip] *= -1
+    return N
+
+
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument("--scene", required=True)
+    p.add_argument("--object", required=True)
+    p.add_argument("--placement", required=True)
+    p.add_argument("--out_scene", required=True)
+    p.add_argument("--out_placement", required=True)
+    p.add_argument("--view_pos", default="", help="camera position used for the specular term")
+    p.add_argument("--clearance_pct", type=float, default=10.0)
+    p.add_argument("--ka", type=float, default=0.55)
+    p.add_argument("--kd", type=float, default=0.55)
+    p.add_argument("--ks", type=float, default=0.18)
+    p.add_argument("--shininess", type=float, default=28.0)
+    p.add_argument("--gain", type=float, default=1.0)
+    p.add_argument("--shadow_strength", type=float, default=0.45)
+    p.add_argument("--shadow_len", type=float, default=0.22)
+    p.add_argument("--shadow_wid", type=float, default=0.12)
+    p.add_argument("--shadow_offset", type=float, default=0.55)
+    p.add_argument("--scale_boost", type=float, default=1.0, help="multiply Gaussian log-scales (closes holes slightly)")
+    p.add_argument("--opacity_add", type=float, default=0.0, help="additive in logit space (makes the object more solid)")
+    p.add_argument("--base_align", type=int, default=1)
+    p.add_argument("--deglare", type=float, default=0.0, help="cap object RGB at this value (kills white glare)")
+    p.add_argument("--base_mode", default="percentile", choices=["percentile", "plane"])
+    p.add_argument("--ao_strength", type=float, default=0.0, help="extra contact AO under the object")
+    p.add_argument("--ao_radius", type=float, default=0.16)
+    p.add_argument("--sink", type=float, default=0.0, help="push the object this far into the table (metres)")
+    p.add_argument("--disc_dark", type=float, default=0.0, help=">0 adds a footprint disc at this brightness factor")
+    p.add_argument("--disc_scale", type=float, default=1.05)
+    p.add_argument("--weighted_contact", type=int, default=1,
+                   help="1 = compute the contact percentile on the opacity-weighted height distribution")
+    args = p.parse_args()
+
+    pl = json.load(open(args.placement))
+    M = np.asarray(pl["object_to_scene"], dtype=np.float64)
+    s = float(pl["scale"])
+    up = np.asarray(pl["scene_up"], dtype=np.float64)
+    up /= np.linalg.norm(up)
+    table_c = np.asarray(pl["table_centre"], dtype=np.float64)
+    G = M[:3, :3] / s
+    t = M[:3, 3]
+
+    ov = PlyData.read(args.object)["vertex"]
+    onames = [pr.name for pr in ov.properties]
+    od = {n: np.array(ov[n]) for n in onames}
+    oxyz = np.stack([od["x"], od["y"], od["z"]], 1).astype(np.float64)
+    world = s * (oxyz @ G.T) + t
+    clearance_plane = None
+    if args.base_align:
+        if args.base_mode == "plane":
+            rng = np.random.default_rng(0)
+            best = (0, None)
+            for _ in range(600):
+                idx = rng.choice(len(world), 3, replace=False)
+                a, b, c = world[idx]
+                n = np.cross(b - a, c - a)
+                nn = np.linalg.norm(n)
+                if nn < 1e-9:
+                    continue
+                n = n / nn
+                cnt = int((np.abs((world - a) @ n) < 0.012).sum())
+                if cnt > best[0]:
+                    best = (cnt, n)
+            n_base = best[1]
+            c0 = world.mean(0)
+            inl = np.abs((world - c0) @ n_base) < 0.012
+            cQ = world[inl].mean(0) if inl.sum() > 10 else c0
+            print("largest planar face: %d inliers" % best[0])
+        else:
+            hh0 = (world - table_c) @ up
+            low = hh0 < np.percentile(hh0, 25)
+            Q = world[low]
+            cQ = Q.mean(0)
+            _, _, vt = np.linalg.svd(Q - cQ)
+            n_base = vt[2]
+        if n_base @ up < 0:
+            n_base = -n_base
+        clearance_plane = None
+        ang = float(np.degrees(np.arccos(np.clip(n_base @ up, -1, 1))))
+        print("base normal %s, %.2f deg from table normal" % (np.round(n_base, 3), ang))
+        if ang > 1.0:
+            axis = np.cross(n_base, up)
+            axis /= np.linalg.norm(axis) + 1e-9
+            K = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+            Rfix = np.eye(3) + np.sin(np.radians(ang)) * K + (1 - np.cos(np.radians(ang))) * (K @ K)
+            cen = world.mean(0)
+            world = (world - cen) @ Rfix.T + cen
+            G = Rfix @ G
+            od["x"], od["y"], od["z"] = world.T
+            qF = rotmat2qvec(Rfix)
+            qo2 = np.stack([od["rot_0"], od["rot_1"], od["rot_2"], od["rot_3"]], 1)
+            q2 = qmul(np.broadcast_to(qF, qo2.shape), qo2)
+            q2 /= np.linalg.norm(q2, axis=1, keepdims=True)
+            od["rot_0"], od["rot_1"], od["rot_2"], od["rot_3"] = q2.T
+            cQ2 = (cQ - cen) @ Rfix.T + cen
+            clearance_plane = float((cQ2 - table_c) @ up)
+            print("rotated object by %.2f deg onto the table" % ang)
+    h = (world - table_c) @ up
+    if args.base_mode == "plane" and clearance_plane is not None:
+        clearance = clearance_plane
+        print("contact from the fitted base plane: %.1f mm" % (clearance * 1000))
+    elif args.weighted_contact:
+        w = 1.0 / (1.0 + np.exp(-np.asarray(od["opacity"], dtype=np.float64)))
+        order = np.argsort(h)
+        cw = np.cumsum(w[order]) / max(w.sum(), 1e-9)
+        clearance = float(h[order][np.searchsorted(cw, args.clearance_pct / 100.0)])
+    else:
+        clearance = float(np.percentile(h, args.clearance_pct))
+    t2 = t - (clearance + args.sink) * up
+    world -= (clearance + args.sink) * up
+    od["x"], od["y"], od["z"] = world.T
+    for i in range(3):
+        od[f"scale_{i}"] = od[f"scale_{i}"] + math.log(s)
+    for i in range(3):
+        od[f"scale_{i}"] = od[f"scale_{i}"] + math.log(args.scale_boost)
+    od["opacity"] = od["opacity"] + args.opacity_add
+    qR = rotmat2qvec(G)
+    qo = np.stack([od["rot_0"], od["rot_1"], od["rot_2"], od["rot_3"]], 1)
+    qn = qmul(np.broadcast_to(qR, qo.shape), qo)
+    qn /= np.linalg.norm(qn, axis=1, keepdims=True)
+    od["rot_0"], od["rot_1"], od["rot_2"], od["rot_3"] = qn.T
+    print(f"grounded by {clearance*1000:.1f} mm")
+
+    sv = PlyData.read(args.scene)["vertex"]
+    snames = [pr.name for pr in sv.properties]
+    sd = {n: np.array(sv[n]) for n in snames}
+    sxyz = np.stack([sd["x"], sd["y"], sd["z"]], 1).astype(np.float64)
+    srgb = 0.5 + C0 * np.stack([sd["f_dc_0"], sd["f_dc_1"], sd["f_dc_2"]], 1)
+
+    # ---- illuminant from the table ----
+    sh = (sxyz - table_c) @ up
+    sr = np.linalg.norm((sxyz - table_c) - sh[:, None] * up, axis=1)
+    near = (np.abs(sh) < 0.05) & (sr < 0.75) & (sr > 0.15)
+    P = sxyz[near]
+    L = srgb[near].mean(1)
+    c2 = P[:, :2] - P[:, :2].mean(0)
+    A = np.stack([np.ones(len(P)), c2[:, 0], c2[:, 1]], 1)
+    coef, *_ = np.linalg.lstsq(A, L, rcond=None)
+    gx, gy = coef[1], coef[2]
+    gh = np.array([gx, gy])
+    gh = gh / (np.linalg.norm(gh) + 1e-9)
+    # world horizontal basis comes from the plane normal
+    tmp = np.array([1.0, 0.0, 0.0])
+    if abs(tmp @ up) > 0.9:
+        tmp = np.array([0.0, 1.0, 0.0])
+    e1 = np.cross(up, tmp); e1 /= np.linalg.norm(e1)
+    e2 = np.cross(up, e1)
+    Ldir = gh[0] * e1 + gh[1] * e2
+    elev = math.radians(42.0)
+    Lvec = math.cos(elev) * Ldir + math.sin(elev) * up
+    Lvec /= np.linalg.norm(Lvec)
+    amb = float(np.percentile(L, 20))
+    diff = float(np.percentile(L, 80) - np.percentile(L, 20))
+    amb_rgb = np.percentile(srgb[near], 10, axis=0)
+    diff_rgb = np.percentile(srgb[near], 90, axis=0) - amb_rgb
+    print("light dir %s  ambient %.3f diffuse %.3f" % (np.round(Lvec, 3), amb, diff))
+
+    # ---- normals + Phong ----
+    N = estimate_normals(world)
+    V = np.asarray([float(x) for x in args.view_pos.split(",")]) if args.view_pos else world.mean(0)
+    Vdir = V - world
+    Vdir /= np.linalg.norm(Vdir, axis=1, keepdims=True) + 1e-9
+    ndl = np.clip(np.einsum("ij,j->i", N, Lvec), 0, 1)
+    Hv = Lvec[None] + Vdir
+    Hv /= np.linalg.norm(Hv, axis=1, keepdims=True) + 1e-9
+    ndh = np.clip(np.einsum("ij,ij->i", N, Hv), 0, 1)
+    shade = args.ka + args.kd * ndl + args.ks * ndh ** args.shininess
+    shade = np.clip(shade / max(float(shade.mean()), 1e-6) * args.gain, 0.70, 1.45)
+    print("shading: min %.2f median %.2f max %.2f" % (shade.min(), np.median(shade), shade.max()))
+
+    orgb = 0.5 + C0 * np.stack([od["f_dc_0"], od["f_dc_1"], od["f_dc_2"]], 1)
+    # tint toward the diffuse colour of the table
+    tint = diff_rgb / max(diff_rgb.mean(), 1e-6)
+    tint = 1.0 + 0.25 * (tint - 1.0)
+    if args.deglare > 0:
+        orgb = np.minimum(orgb, args.deglare)
+    for k, c in enumerate(("f_dc_0", "f_dc_1", "f_dc_2")):
+        od[c] = ((orgb[:, k] - 0.5) * shade * tint[k]) / C0
+
+    # ---- directional shadow ----
+    base_center = np.median(world, axis=0)
+    base_center -= ((base_center - table_c) @ up) * up
+    Lh = Ldir / (np.linalg.norm(Ldir) + 1e-9)
+    Lh = np.cross(up, np.cross(Lh, up))
+    Lh /= np.linalg.norm(Lh) + 1e-9
+    hh = (world - table_c) @ up
+    obj_h = float(np.percentile(hh, 95) - np.percentile(hh, 5))
+    centre = base_center - Lh * (args.shadow_offset * max(obj_h, 0.05))
+    d = sxyz - centre
+    dh = d @ Lh
+    dw = d - dh[:, None] * Lh
+    dw = dw - (dw @ up)[:, None] * up
+    dwn = np.linalg.norm(dw, axis=1)
+    q = (dh / args.shadow_len) ** 2 + (dwn / args.shadow_wid) ** 2
+    on_plane = np.abs(sh) < 0.06
+    atten = 1.0 - args.shadow_strength * np.exp(-0.5 * q) * on_plane
+    if args.ao_strength > 0:
+        dc0 = sxyz - base_center
+        dh0 = dc0 @ up
+        dr0 = np.linalg.norm(dc0 - dh0[:, None] * up, axis=1)
+        ao = np.exp(-(dr0 ** 2) / (2 * args.ao_radius ** 2)) * (np.abs(sh) < 0.08)
+        atten = atten * (1.0 - args.ao_strength * ao)
+        print("contact AO: %d Gaussians, min %.2f" % ((ao > 0.01).sum(), atten.min()))
+    print("shadow: %d Gaussians, min %.2f" % ((atten < 0.999).sum(), atten.min()))
+    for c in ("f_dc_0", "f_dc_1", "f_dc_2"):
+        sd[c] = ((0.5 + C0 * sd[c]) * atten - 0.5) / C0
+
+    # ---- footprint disc (hides the unobserved underside, reads as contact) ----
+    extra = {n: np.zeros(0, dtype=np.float32) for n in snames}
+    if args.disc_dark > 0:
+        n_d = 4000
+        for _k in snames:
+            extra[_k] = np.zeros(n_d, dtype=np.float32)
+        hh = (world - table_c) @ up
+        low = hh < np.percentile(hh, 20)
+        base_c = np.median(world[low], axis=0) if low.sum() > 10 else world.mean(0)
+        off = (world - base_c)
+        off = off - (off @ up)[:, None] * up
+        foot = np.linalg.norm(off, axis=1)
+        R_f = float(np.percentile(foot[low], 90)) * args.disc_scale if low.sum() > 10 else 0.08
+        base_c = base_c - ((base_c - table_c) @ up) * up + 0.001 * up
+        rng = np.random.default_rng(0)
+        rr = R_f * np.sqrt(rng.random(n_d))
+        th = rng.uniform(0, 2 * np.pi, n_d)
+        tmp = np.array([1.0, 0.0, 0.0])
+        if abs(tmp @ up) > 0.9:
+            tmp = np.array([0.0, 1.0, 0.0])
+        e1 = np.cross(up, tmp); e1 /= np.linalg.norm(e1)
+        e2 = np.cross(up, e1)
+        pos = base_c + rr[:, None] * (np.cos(th)[:, None] * e1 + np.sin(th)[:, None] * e2)
+        extra["x"], extra["y"], extra["z"] = pos.T
+        for i in range(3):
+            extra[f"scale_{i}"] = np.full(n_d, np.log(0.010 if i < 2 else 0.0012), dtype=np.float32)
+        extra["rot_0"] = np.ones(n_d, dtype=np.float32)
+        extra["opacity"] = np.full(n_d, 1.1, dtype=np.float32)
+        dark = diff_rgb * args.disc_dark
+        for k, c in enumerate(("f_dc_0", "f_dc_1", "f_dc_2")):
+            extra[c] = np.full(n_d, (dark[k] - 0.5) / C0, dtype=np.float32)
+        print("footprint disc: %d gaussians, R %.3f, brightness %.2f" % (n_d, R_f, args.disc_dark))
+
+    # ---- write ----
+    dtype = [(n, "f4") for n in snames]
+    merged = np.empty(len(sd["x"]) + len(od["x"]) + len(extra["x"]), dtype=dtype)
+    for n in snames:
+        merged[n] = np.concatenate([sd[n].astype(np.float32), od[n].astype(np.float32), extra[n]])
+    PlyData([PlyElement.describe(merged, "vertex")]).write(args.out_scene)
+    M2 = M.copy(); M2[:3, 3] = t2
+    pl["object_to_scene"] = M2.tolist()
+    pl["grounding_shift_m"] = float(clearance)
+    pl["light_dir"] = Lvec.tolist()
+    json.dump(pl, open(args.out_placement, "w"), indent=2)
+    print("wrote", args.out_scene, len(merged))
+
+
+if __name__ == "__main__":
+    main()

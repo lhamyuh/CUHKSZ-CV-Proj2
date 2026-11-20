@@ -17,8 +17,15 @@ submission/renders/
 submission/scene/
 submission/fusion/
 submission/evidence/
-submission/StudentID_Name/
-submission/StudentID_Name.zip
+submission/226010334_LinyuYANG/renders/
+submission/226010334_LinyuYANG/scene/
+submission/226010334_LinyuYANG/fusion/
+submission/226010334_LinyuYANG/evidence/
+submission/226010334_LinyuYANG.zip
+
+# ---- large local deliverables (published as release assets) ----
+deliverables/
+*.tar.gz
 
 # ---- report figures: JPG/PNG used by main.tex are kept, duplicates are not ----
 submission/fig/*.png

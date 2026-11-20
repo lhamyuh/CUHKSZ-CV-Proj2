@@ -1,0 +1,222 @@
+% CIE 6004 Assignment 2 report
+\documentclass[10pt,twocolumn,letterpaper]{article}
+\usepackage[review]{cvpr}
+\input{preamble}
+\definecolor{cvprblue}{rgb}{0.21,0.49,0.74}
+\usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}
+\def\paperID{*****}
+\def\confName{CVPR}
+\def\confYear{2026}
+
+\title{Reconstructing Garden, Reconstructing an Object,\\and Placing It Back: An Empirical 3DGS Study}
+\author{Student Name\\
+Student ID\\
+\tt\small student@example.com}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We build a complete 3D Gaussian Splatting (3DGS) pipeline for the three tasks of Assignment~2:
+reconstructing the Garden scene, reconstructing one supplied object (an Olympus OM-2 camera)
+from handheld clips, and placing that object back into Garden with a consistent depth ordering.
+On the 12 public validation views our Garden model reaches \textbf{27.27\,dB PSNR / 0.8668 SSIM /
+0.0764 LPIPS}, improving on the released baseline ($25.73 / 0.7925 / 0.1757$) on all three
+metrics. For the object we build a disjoint 285/33/164 frame split, run a mask-limited SfM
+that registers all 498 frames, and train a white-background 3DGS model. A controlled experiment
+on the mask boundary ($+2$\,px dilation, everything else fixed) raises masked PSNR from
+16.23 to 18.23\,dB while leaving one rear view unsolved, which localises the remaining error to
+view coverage rather than to mask bias alone. Finally we place the camera on the garden table,
+using a RANSAC tabletop plane and a width-based scale estimate, and render a 10\,s orbit whose
+depth ordering is produced by the splatting itself rather than by compositing.
+\end{abstract}
+
+\section{Setup and conventions}
+
+\paragraph{Data.} Garden~\cite{barron2022} ships 161 training photographs at $1297\times840$ with a COLMAP
+reconstruction whose stored camera model is $5187\times3361$ ($f_x\!\approx\!3844.9$).
+Because focal length and resolution scale together, the field of view is unchanged if the images
+are loaded at their native size, and all projections must use $f_x\!\approx\!961.4$ at
+$1297\times840$. Poses are \texttt{world\_to\_camera} $4\times4$ matrices in OpenCV convention
+with column vectors. We verified the convention by projecting the 135\,521 sparse points into a
+validation photograph before training; the table rim and door align to sub-pixel error
+.
+
+\paragraph{Models.} Garden and the object are trained with the official 3DGS implementation~\cite{kerbl2023}
+(commit \texttt{54c035f}) with $30$k iterations and SH degree 3, on one H800 PCIe (80\,GB),
+20 vCPU and 100\,GB RAM. Garden runs in 21 minutes at full resolution with 4.17\,M Gaussians;
+the object trains in 5 minutes on 285 frames of $406\times720$.
+
+\paragraph{Camera handling.} Our renderer builds \texttt{Camera(R, T, FoVx, FoVy)} directly from
+the JSON poses with $R=M_{3\times3}^{\top}$ (camera-to-world) and $T=M_{3\times3+1}$, matching the
+convention of the COLMAP loader. Getting this transposition wrong yields a plausible-looking but
+mis-oriented render (12.6\,dB PSNR), which is why every stage below is gated by a numeric check.
+
+\section{Task A: Garden}
+
+\begin{table}[t]
+\centering\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccc}
+\hline
+ & PSNR$\uparrow$ & SSIM$\uparrow$ & LPIPS$\downarrow$\\
+\hline
+Released baseline & 25.73 & 0.7925 & 0.1757\\
+Ours (30k, full res) & \textbf{27.27} & \textbf{0.8668} & \textbf{0.0764}\\
+\hline
+\end{tabular}
+\caption{Average over the 12 validation views, measured with the official
+\texttt{tools/evaluate.py} (LPIPS-Alex v0.1~\cite{zhang2018}).}
+\label{tab:garden}
+\end{table}
+
+We train on all 161 views with automatic holdout disabled, at native resolution, and render the
+12 validation cameras and the 12 test cameras independently of the training loader. The
+prescribed video is rendered from the 240 poses of \texttt{trajectory/garden.json} at
+$1280\times720$ and 24\,fps, i.e.\ exactly 10.0\,s; these cameras have a different intrinsics
+($f=1410$) from the evaluation cameras, so they are constructed separately.
+
+Table~\ref{tab:garden} reports the validation metrics. All three improve over the baseline;
+the largest relative gain is in LPIPS ($-57\%$), consistent with sharper foliage and wood grain.
+
+\paragraph{The hardest view.} DSC07988 is a steep, downward-looking view of the tabletop
+(Fig.~\ref{fig:hardest}). It reaches 20.44\,dB against a per-view mean of 27.27, i.e.\ a 6.8\,dB
+gap. Two effects compound: the camera sees the plank seams almost edge-on, where a small depth
+error shifts a high-frequency stripe by several pixels, and the reconstruction has relatively few
+training views from this elevation. The 2$\times$ crops show that our model keeps the radial seam
+pattern but smooths the thin flower stems, while the baseline loses the seam structure entirely.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig/hardest_view.jpg}
+\caption{Hardest validation view (DSC07988): reference, ours, released baseline.}
+\label{fig:hardest}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig/hardest_crop.jpg}
+\caption{2$\times$ crops of the vase and stems. Our seam structure survives; thin stems are
+smoothed. The baseline blurs the seam pattern.}
+\label{fig:crop}
+\end{figure}
+
+\section{Task B: the camera}
+
+\subsection{Split and poses}
+The supplied clips have 198, 136 and 164 frames at 8\,fps. We use 1975 and 1976 for development
+and reserve 1977 for testing, and cut a contiguous validation arc from 1976 with a one-second
+(8-frame) gap on both sides: train 285 frames (all of 1975, plus 1976 \#0--31 and \#81--135),
+validation 33 frames (1976 \#40--72), test 164 frames (all of 1977). The split is written to
+\texttt{object\_split.json} with explicit frame identifiers and a \texttt{val\_gap\_frames} field.
+
+Automatic SfM on the full set with plain SIFT slows down quadratically and, more importantly,
+reconstructs the plaid bed rather than the object. We therefore extract features \emph{inside the
+foreground masks} (COLMAP \texttt{ImageReader.mask\_path}), which restricts the reconstruction to
+the camera body. All 498 frames register in one model with 10\,939 points and a final
+reprojection cost of 0.61\,px. Masks come from \texttt{u2netp}; 12 random frames were inspected
+before use.
+
+\subsection{Training and the defect}
+The object is trained on white-composited crops of $406\times720$ with 3DGS (30k iterations,
+131\,972 Gaussians). The baseline orbit (Fig.~\ref{fig:triplet}) shows one clear defect: the
+silhouette is \emph{eaten away} along the dark underside and the right-hand body edge, and a
+faint white halo floats beside the body. Our explanation is mask-boundary bias: the hard mask
+treats the low-contrast boundary pixels as background, so the photometric residual never asks the
+model to cover them, and the freed capacity drifts into the background as floaters.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig/mask_triplet.jpg}
+\caption{Object pipeline: source frame, foreground mask, novel-view render (baseline).}
+\label{fig:triplet}
+\end{figure}
+
+\paragraph{Controlled experiment.} We test exactly one variable: dilating every training mask by
+2\,px before compositing, keeping the split, the initial point cloud, the seed and the 30k budget
+fixed. Masked PSNR over three held-out validation views rises from 16.23 to 18.23\,dB, and the
+front view improves from 20.63 to 23.90\,dB. Silhouette IoU against the \emph{undilated}
+reference mask drops slightly (0.834 to 0.811), which is expected: the variant deliberately covers
+two extra pixels, so this number is biased against the change and we report it rather than hide it.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig/ablation.jpg}
+\caption{Baseline (left) versus $+2$\,px mask dilation (right) at three fixed validation views.}
+\label{fig:ablation}
+\end{figure}
+
+\paragraph{What did not improve.} One rear/underside view stays at about 11\,dB in both variants.
+Dilation cannot help there: the failure follows the viewpoints, not the mask. The capture orbits
+the object but rarely looks at the bottom face, so those Gaussians are supported by a handful of
+grazing observations. This is the remaining failure we report.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig/stages.jpg}
+\caption{The same validation camera at 5k, 10k, 15k and 30k iterations.}
+\label{fig:stages}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig/loss.png}
+\caption{Training loss (total and L1), 30k iterations; the kink near 15k is the end of
+densification.}
+\label{fig:loss}
+\end{figure}
+
+\section{Task C: placing the camera in Garden}
+
+\paragraph{Scene geometry.} We fit the tabletop directly in the reconstruction: points whose
+projection falls inside an image-space ellipse around the table are selected in a validation view,
+and RANSAC returns a plane with 8\,409 inliers. Its normal (within $4.1^{\circ}$ of the average
+camera up vector over six views) defines the scene up axis, its inlier centroid the table centre,
+and the inlier spread a radius of 0.99 scene units; the camera sits 0.78 units above the plane.
+The two independent estimates agree, which fixes the metric scale to roughly one unit per metre.
+
+\paragraph{Scale and transform.} The object's pruned point cloud has a PCA frame in which the body
+width, height and depth measure 5.28, 2.99 and 2.13 units. An OM-2 body is 136\,mm wide, so the
+uniform scale is $s=0.090$ and the resulting object is 13.6\,cm wide, 7.7\,cm tall and 5.5\,cm deep.
+The transform is a similarity: positions are mapped by $sR p + t$, log-scales are offset by
+$\log s$, and rotations are left-multiplied by the quaternion of $R$; this is exactly what
+\texttt{fusion/placement.json} stores as a $4\times4$ matrix acting on column vectors.
+
+\paragraph{Occlusion.} The camera is placed on the table 0.45 units from the vase, with its lens
+axis toward the first frame of the shot. The 240-frame, 10\,s path arcs $185^{\circ}$ around the
+table at 1.9\,units radius and 1.26\,units height. It starts with the vase overlapping the object,
+which makes the first second a genuine depth-ordering test, and the arc then slides the vase off
+the line of sight until the camera stands fully visible against the garden. Depth ordering is not
+composited: the object
+Gaussians are merged into the scene point cloud, so the rasteriser resolves which splat is in
+front at every pixel.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\linewidth]{fig/fusion_strip.jpg}
+\caption{Fusion frames at 0.0\,s, 5.0\,s and 10.0\,s: the camera rests on the table, the vase
+overlaps it at the start of the arc, and it is fully visible at the end.}
+\label{fig:fusion}
+\end{figure}
+
+\section{Bonus: making the insertion look placed}
+
+The basic render shows three artefacts: no contact shadow, a brightness mismatch between the
+object and the table, and background Gaussians bleeding through the object's silhouette. We
+improve the first two: (i) table Gaussians within a radius of the object base have their SH DC
+term darkened by a quadratic falloff, which produces a soft contact shadow without new geometry;
+(ii) the object's SH DC is rescaled toward the local table illuminant measured in the same frame.
+The before/after pair is rendered from the same camera and placement.
+
+\section{Reproducibility and limitations}
+
+All runs are scripted (\texttt{code/}), with fixed seeds, recorded configs
+(\texttt{runs/*/cfg\_args}) and per-run logs. The repository commit, CUDA and PyTorch versions,
+hardware and wall-clock times are listed in \texttt{README.md}. The main limitation is the object
+capture itself: the rear and bottom faces are poorly observed, so no amount of mask tuning
+recovers them, and the halo that survives pruning still shows as a faint streak at some angles.
+
+\bibliographystyle{ieeenat_fullname}
+\bibliography{main}
+
+\end{document}
