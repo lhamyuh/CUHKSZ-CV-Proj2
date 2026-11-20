@@ -79,27 +79,21 @@ $1280\times720$ and 24\,fps, i.e.\ exactly 10.0\,s; these cameras have a differe
 
 Table~\ref{tab:garden} reports the validation metrics. All three improve over the baseline;
 the largest relative gain is in LPIPS ($-57\%$), consistent with sharper foliage and wood grain.
+A 45k-iteration run adds only $+0.09$\,dB PSNR / $+0.002$ SSIM / $-0.002$ LPIPS, so the budget
+saturates by 30k and we deliver the 30k model (same numbers, one fewer re-render to reproduce).
 
 \paragraph{The hardest view.} DSC07988 is a steep, downward-looking view of the tabletop
 (Fig.~\ref{fig:hardest}). It reaches 20.44\,dB against a per-view mean of 27.27, i.e.\ a 6.8\,dB
 gap. Two effects compound: the camera sees the plank seams almost edge-on, where a small depth
 error shifts a high-frequency stripe by several pixels, and the reconstruction has relatively few
-training views from this elevation. The 2$\times$ crops show that our model keeps the radial seam
-pattern but smooths the thin flower stems, while the baseline loses the seam structure entirely.
+training views from this elevation. Zooming to the vase shows that our model keeps the radial seam pattern but smooths the thin
+flower stems, while the baseline loses the seam structure entirely.
 
 \begin{figure}[t]
 \centering
 \includegraphics[width=\linewidth]{fig/hardest_view.jpg}
 \caption{Hardest validation view (DSC07988): reference, ours, released baseline.}
 \label{fig:hardest}
-\end{figure}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{fig/hardest_crop.jpg}
-\caption{2$\times$ crops of the vase and stems. Our seam structure survives; thin stems are
-smoothed. The baseline blurs the seam pattern.}
-\label{fig:crop}
 \end{figure}
 
 \section{Task B: the camera}
@@ -140,7 +134,11 @@ front view improves from 20.63 to 23.90\,dB. Silhouette IoU against the \emph{un
 reference mask drops slightly (0.834 to 0.811), which is expected: the variant deliberately covers
 two extra pixels, so this number is biased against the change and we report it rather than hide it.
 The dilated variant is therefore the deliverable model; it also renders the cleaner orbit
-(Fig.~\ref{fig:ablation}).
+(Fig.~\ref{fig:ablation}). Two further variants did \emph{not} help: a black-background retrain
+removes the white halo but darkens the thin parts, and a 40k dense run (gradient threshold
+$10^{-4}$, densify to 20k) adds lens detail at the cost of more boundary fringes. The remaining
+fragmentation is bounded by the capture, not by the training recipe: the body occupies about a
+quarter of a $406\times720$ frame, so levers and strap lugs are only 2--4 pixels wide.
 
 \paragraph{Post-processing of the delivered model.} White-background training leaves 64\% of the
 Gaussians below 0.15 opacity (median 0.08), which is the white haze visible in the orbit. We prune
