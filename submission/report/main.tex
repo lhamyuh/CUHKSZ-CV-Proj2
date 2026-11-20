@@ -133,8 +133,11 @@ fixed. Masked PSNR over three held-out validation views rises from 16.23 to 18.2
 front view improves from 20.63 to 23.90\,dB. Silhouette IoU against the \emph{undilated}
 reference mask drops slightly (0.834 to 0.811), which is expected: the variant deliberately covers
 two extra pixels, so this number is biased against the change and we report it rather than hide it.
-The dilated variant is therefore the deliverable model; it also renders the cleaner orbit
-(Fig.~\ref{fig:ablation}). Three further variants did \emph{not} help: a black-background retrain removes the white halo but
+For the orbit we compared the dilated model (18.2\,dB, more dial detail but a white fringe
+along the body) with the initial model (16.2\,dB, cleaner silhouette) and a lightly smoothed
+variant of each (Fig.~\ref{fig:bversions}); the initial model with light k-NN smoothing reads
+cleanest, so that is what we ship, while the masked-PSNR ablation above is reported on the raw
+models because smoothing is an appearance-only post-process. Three further variants did \emph{not} help: a black-background retrain removes the white halo but
 darkens the thin parts; a 40k dense run (gradient threshold $10^{-4}$, densify to 20k) adds lens
 detail at the cost of more boundary fringes; and training on 2x upscaled frames (812x1440) drops masked PSNR from 18.2 to 13.7\,dB in both
 compositing orders: upscaling adds no information and the finer splats alias at the 406x720
@@ -142,7 +145,7 @@ evaluation resolution, so we keep the native-resolution model. The remaining
 fragmentation is bounded by the capture, not by the training recipe: the body occupies about a
 quarter of a $406\times720$ frame, so levers and strap lugs are only 2--4 pixels wide.
 
-\paragraph{Post-processing of the delivered model.} White-background training leaves 64\% of the
+\paragraph{Model selection.} White-background training leaves 64\% of the
 Gaussians below 0.15 opacity (median 0.08), which is the white haze visible in the orbit. We prune
 Gaussians that project outside the masks in most training views (visibility ratio below 0.75),
 drop opacity below 0.05 and log-scales above 0.12, and remap the remaining opacity in logit space
@@ -174,6 +177,15 @@ grazing observations. This is the remaining failure we report.
 \caption{Training loss (total and L1), 30k iterations; the kink near 15k is the end of
 densification.}
 \label{fig:loss}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.95\linewidth]{fig/B_versions.jpg}
+\caption{Object model comparison at four orbit views: initial (top), initial with light smoothing
+(middle), dilated-mask model (bottom). The initial model has the cleanest silhouette; the dilated
+one keeps more dial detail but shows a white fringe.}
+\label{fig:bversions}
 \end{figure}
 
 \section{Task C: placing the camera in Garden}
