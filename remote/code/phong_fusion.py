@@ -77,6 +77,13 @@ def main():
     p.add_argument("--shadow_len", type=float, default=0.22)
     p.add_argument("--shadow_wid", type=float, default=0.12)
     p.add_argument("--shadow_offset", type=float, default=0.55)
+    p.add_argument("--scale_boost", type=float, default=1.0, help="multiply Gaussian log-scales (closes holes slightly)")
+    p.add_argument("--opacity_add", type=float, default=0.0, help="additive in logit space (makes the object more solid)")
+    p.add_argument("--base_align", type=int, default=1)
+    p.add_argument("--deglare", type=float, default=0.0, help="cap object RGB at this value (kills white glare)")
+    p.add_argument("--base_mode", default="percentile", choices=["percentile", "plane"])
+    p.add_argument("--weighted_contact", type=int, default=1,
+                   help="1 = compute the contact percentile on the opacity-weighted height distribution")
     args = p.parse_args()
 
     pl = json.load(open(args.placement))
@@ -93,13 +100,65 @@ def main():
     od = {n: np.array(ov[n]) for n in onames}
     oxyz = np.stack([od["x"], od["y"], od["z"]], 1).astype(np.float64)
     world = s * (oxyz @ G.T) + t
+    if args.base_align:
+        if args.base_mode == "plane":
+            rng = np.random.default_rng(0)
+            best = (0, None)
+            for _ in range(600):
+                idx = rng.choice(len(world), 3, replace=False)
+                a, b, c = world[idx]
+                n = np.cross(b - a, c - a)
+                nn = np.linalg.norm(n)
+                if nn < 1e-9:
+                    continue
+                n = n / nn
+                cnt = int((np.abs((world - a) @ n) < 0.012).sum())
+                if cnt > best[0]:
+                    best = (cnt, n)
+            n_base = best[1]
+            print("largest planar face: %d inliers" % best[0])
+        else:
+            hh0 = (world - table_c) @ up
+            low = hh0 < np.percentile(hh0, 25)
+            Q = world[low]
+            cQ = Q.mean(0)
+            _, _, vt = np.linalg.svd(Q - cQ)
+            n_base = vt[2]
+        if n_base @ up < 0:
+            n_base = -n_base
+        ang = float(np.degrees(np.arccos(np.clip(n_base @ up, -1, 1))))
+        print("base normal %s, %.2f deg from table normal" % (np.round(n_base, 3), ang))
+        if ang > 1.0:
+            axis = np.cross(n_base, up)
+            axis /= np.linalg.norm(axis) + 1e-9
+            K = np.array([[0, -axis[2], axis[1]], [axis[2], 0, -axis[0]], [-axis[1], axis[0], 0]])
+            Rfix = np.eye(3) + np.sin(np.radians(ang)) * K + (1 - np.cos(np.radians(ang))) * (K @ K)
+            cen = world.mean(0)
+            world = (world - cen) @ Rfix.T + cen
+            G = Rfix @ G
+            od["x"], od["y"], od["z"] = world.T
+            qF = rotmat2qvec(Rfix)
+            qo2 = np.stack([od["rot_0"], od["rot_1"], od["rot_2"], od["rot_3"]], 1)
+            q2 = qmul(np.broadcast_to(qF, qo2.shape), qo2)
+            q2 /= np.linalg.norm(q2, axis=1, keepdims=True)
+            od["rot_0"], od["rot_1"], od["rot_2"], od["rot_3"] = q2.T
+            print("rotated object by %.2f deg onto the table" % ang)
     h = (world - table_c) @ up
-    clearance = float(np.percentile(h, args.clearance_pct))
+    if args.weighted_contact:
+        w = 1.0 / (1.0 + np.exp(-np.asarray(od["opacity"], dtype=np.float64)))
+        order = np.argsort(h)
+        cw = np.cumsum(w[order]) / max(w.sum(), 1e-9)
+        clearance = float(h[order][np.searchsorted(cw, args.clearance_pct / 100.0)])
+    else:
+        clearance = float(np.percentile(h, args.clearance_pct))
     t2 = t - clearance * up
     world -= clearance * up
     od["x"], od["y"], od["z"] = world.T
     for i in range(3):
         od[f"scale_{i}"] = od[f"scale_{i}"] + math.log(s)
+    for i in range(3):
+        od[f"scale_{i}"] = od[f"scale_{i}"] + math.log(args.scale_boost)
+    od["opacity"] = od["opacity"] + args.opacity_add
     qR = rotmat2qvec(G)
     qo = np.stack([od["rot_0"], od["rot_1"], od["rot_2"], od["rot_3"]], 1)
     qn = qmul(np.broadcast_to(qR, qo.shape), qo)
@@ -151,13 +210,15 @@ def main():
     Hv /= np.linalg.norm(Hv, axis=1, keepdims=True) + 1e-9
     ndh = np.clip(np.einsum("ij,ij->i", N, Hv), 0, 1)
     shade = args.ka + args.kd * ndl + args.ks * ndh ** args.shininess
-    shade = shade / max(float(shade.mean()), 1e-6) * args.gain
+    shade = np.clip(shade / max(float(shade.mean()), 1e-6) * args.gain, 0.70, 1.45)
     print("shading: min %.2f median %.2f max %.2f" % (shade.min(), np.median(shade), shade.max()))
 
     orgb = 0.5 + C0 * np.stack([od["f_dc_0"], od["f_dc_1"], od["f_dc_2"]], 1)
     # tint toward the diffuse colour of the table
     tint = diff_rgb / max(diff_rgb.mean(), 1e-6)
     tint = 1.0 + 0.25 * (tint - 1.0)
+    if args.deglare > 0:
+        orgb = np.minimum(orgb, args.deglare)
     for k, c in enumerate(("f_dc_0", "f_dc_1", "f_dc_2")):
         od[c] = ((orgb[:, k] - 0.5) * shade * tint[k]) / C0
 
