@@ -1,0 +1,45 @@
+# ---- course data (not ours to redistribute) ----
+Assignment2_release/
+Assignment2_release.zip
+
+# ---- personal thesis / extracted text ----
+tjumian.pdf
+tjumian.txt
+guide.txt
+
+# ---- generated media (ship as release asset / cloud drive, see RELEASE.md) ----
+assets/
+preview/
+frames_probe/
+figures/
+gallery/
+submission/renders/
+submission/scene/
+submission/fusion/
+submission/evidence/
+submission/StudentID_Name/
+submission/StudentID_Name.zip
+
+# ---- report figures: JPG/PNG used by main.tex are kept, duplicates are not ----
+submission/fig/*.png
+!submission/fig/loss.png
+submission/report/fig/*.png
+!submission/report/fig/loss.png
+
+# ---- LaTeX build artefacts ----
+submission/report/*.aux
+submission/report/*.log
+submission/report/*.out
+submission/report/*.bbl
+submission/report/*.blg
+submission/report/*.brf
+submission/report/*.synctex.gz
+submission/report/page-*.png
+submission/report/p-*.png
+submission/report/q-*.png
+submission/report/r-*.png
+submission/report/spread.png
+
+# ---- python ----
+__pycache__/
+*.pyc
