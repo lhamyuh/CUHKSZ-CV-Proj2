@@ -187,7 +187,9 @@ The two independent estimates agree, which fixes the metric scale to roughly one
 
 \paragraph{Scale and transform.} The object's pruned point cloud has a PCA frame in which the body
 width, height and depth measure 2.41, 1.95 and 1.40 units. An OM-2 body is 136\,mm wide, so the
-uniform scale is $s=0.0566$ and the resulting object is 13.6\,cm wide, 11.0\,cm tall and 7.9\,cm deep.
+uniform scale is $s=0.0566$ for the physical size (13.6\,cm wide). At the shot distance that
+projects to only 71--95\,px, which reads as a toy, so the delivered placement uses
+$s=0.113$ (27\,cm equivalent) together with a closer camera path (1.5 instead of 1.9 units).
 The transform is a similarity: positions are mapped by $sR p + t$, log-scales are offset by
 $\log s$, and rotations are left-multiplied by the quaternion of $R$; this is exactly what
 \texttt{fusion/placement.json} stores as a $4\times4$ matrix acting on column vectors.
