@@ -5,6 +5,7 @@
 \definecolor{cvprblue}{rgb}{0.21,0.49,0.74}
 \usepackage[pagebackref,breaklinks,colorlinks,allcolors=cvprblue]{hyperref}
 \usepackage{placeins}
+\raggedbottom
 \def\paperID{*****}
 \def\confName{CVPR}
 \def\confYear{2026}
@@ -12,7 +13,7 @@
 \title{Reconstructing Garden, Reconstructing an Object,\\and Placing It Back: An Empirical 3DGS Study}
 \author{Linyu YANG (226010334)\\
 The Chinese University of Hong Kong, Shenzhen\\
-\tt\small 226010334@cuhk.edu.cn}
+\tt\small 226010334@link.cuhk.edu.cn}
 
 \begin{document}
 \maketitle
@@ -157,26 +158,26 @@ bright specks survive on the top plate.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.88\linewidth]{fig/ablation.jpg}
-\caption{Baseline (left) versus $+2$\,px mask dilation (right) at three fixed validation views.}
+\includegraphics[width=0.86\linewidth]{fig/ablation_compact.jpg}
+\caption{Baseline (top) versus $+2$\,px mask dilation (bottom) at three fixed validation views.}
 \label{fig:ablation}
 \end{figure}
 
 Fig.~\ref{fig:loss} collects the training evidence: one fixed validation camera at 5k, 10k,
 15k and 30k iterations, and the total/L1 loss over the same run.
+\begin{figure}[b]
+\centering
+\includegraphics[width=0.90\linewidth]{fig/stages_loss.jpg}
+\caption{Top: the same validation camera at 5k, 10k, 15k and 30k iterations. Bottom:
+training loss (total and L1); the kink near 15k is the end of densification.}
+\label{fig:loss}
+\end{figure}
 
 \paragraph{What did not improve.} One rear/underside view stays at about 11\,dB in both variants.
 Dilation cannot help there: the failure follows the viewpoints, not the mask. The capture orbits
 the object but rarely looks at the bottom face, so those Gaussians are supported by a handful of
 grazing observations. This is the remaining failure we report.
 
-\begin{figure}[t]
-\centering
-\includegraphics[width=\linewidth]{fig/loss.png}
-\caption{Top: the same validation camera at 5k, 10k, 15k and 30k iterations. Bottom:
-training loss (total and L1); the kink near 15k is the end of densification.}
-\label{fig:loss}
-\end{figure}
 
 \section{Task C: placing the camera in Garden}
 
@@ -227,13 +228,13 @@ line of sight between 6.2 and 8\,s, where the object is fully hidden, and the la
 return it to a clear view. Depth ordering is not composited: the object Gaussians are merged into
 the scene point cloud, so the rasteriser resolves which splat is in front at every pixel.
 
-\begin{figure*}[t]
+\begin{figure}[t]
 \centering
-\includegraphics[width=0.98\linewidth]{fig/fusion_strip.jpg}
+\includegraphics[width=0.92\linewidth]{fig/fusion_strip.jpg}
 \caption{Fusion frames at 0.0\,s, 6.2\,s and 10.0\,s: the camera rests on the wooden ring, the vase
 hides it completely at 6.2\,s, and it is fully visible again at the end of the arc.}
 \label{fig:fusion}
-\end{figure*}
+\end{figure}
 
 \section{Bonus: grounding, contact shadow and illumination match}
 
@@ -265,7 +266,7 @@ white-background training also survive on the top plate.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=\linewidth]{fig/bonus.jpg}
+\includegraphics[width=0.86\linewidth]{fig/bonus.jpg}
 \caption{Bonus pass at a matched viewpoint: basic merge (left) versus base alignment +
 grounding + contact shadow + Phong relighting (right). The tilt is gone, the body reads as bright
 as the raw merge, and a local contact shadow anchors it; a directional cast shadow is still
