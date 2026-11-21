@@ -10,6 +10,17 @@
 
 Release page: <https://github.com/lhamyuh/CUHKSZ-CV-Proj2/releases/tag/v2.0-final>
 
+## After the GPU instance is released
+
+The AutoDL instance was released after packaging, so nothing below depends on it any more.
+
+| what | where |
+|---|---|
+| graded archive | `submission/226010334_LinyuYANG.zip` (local) and Release asset (same bytes) |
+| model weights + configs + logs | `deliverables/records_226010334_LinyuYANG.tar.gz` (local, 922 MB) and Release asset (sha256 `3125d8f1…`) |
+| from-scratch reproduction kit | Release asset `repro_226010334_LinyuYANG.tar.gz` (44 KB: `REPRODUCE.md`, `pip freeze`, CUDA/COLMAP/3DGS versions, frame list, mask checksums, metrics, fusion placement) |
+| course data, template, clips | `Assignment2_release/` (local). Training and validation **photographs** are not kept locally because they are the course's own data; re-download them from the course portal if a full re-render is needed. Cameras, COLMAP sparse model, trajectory, template, tools and the three object clips are kept. |
+
 ## What the TA needs for a spot check
 
 The guide asks us to keep the final scene and object models until grading is complete.
