@@ -136,7 +136,7 @@ reference mask drops slightly (0.834 to 0.811), which is expected: the variant d
 two extra pixels, so this number is biased against the change and we report it rather than hide it.
 For the orbit we compared the dilated model (18.2\,dB, more dial detail but a white fringe
 along the body) with the initial model (16.2\,dB, cleaner silhouette) and a lightly smoothed
-variant of each (Fig.~\ref{fig:bversions}); the initial model with light k-NN smoothing reads
+variant of each (\texttt{evidence/} in the archive); the initial model with light k-NN smoothing reads
 cleanest, so that is what we ship, while the masked-PSNR ablation above is reported on the raw
 models because smoothing is an appearance-only post-process. Three further variants did \emph{not} help: a black-background retrain removes the white halo but
 darkens the thin parts; a 40k dense run (gradient threshold $10^{-4}$, densify to 20k) adds lens
@@ -162,6 +162,9 @@ bright specks survive on the top plate.
 \label{fig:ablation}
 \end{figure}
 
+Fig.~\ref{fig:loss} collects the training evidence: one fixed validation camera at 5k, 10k,
+15k and 30k iterations, and the total/L1 loss over the same run.
+
 \paragraph{What did not improve.} One rear/underside view stays at about 11\,dB in both variants.
 Dilation cannot help there: the failure follows the viewpoints, not the mask. The capture orbits
 the object but rarely looks at the bottom face, so those Gaussians are supported by a handful of
@@ -169,26 +172,10 @@ grazing observations. This is the remaining failure we report.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.86\linewidth]{fig/stages.jpg}
-\caption{The same validation camera at 5k, 10k, 15k and 30k iterations.}
-\label{fig:stages}
-\end{figure}
-
-\begin{figure}[t]
-\centering
 \includegraphics[width=\linewidth]{fig/loss.png}
-\caption{Training loss (total and L1), 30k iterations; the kink near 15k is the end of
-densification.}
+\caption{Top: the same validation camera at 5k, 10k, 15k and 30k iterations. Bottom:
+training loss (total and L1); the kink near 15k is the end of densification.}
 \label{fig:loss}
-\end{figure}
-
-\begin{figure}[t]
-\centering
-\includegraphics[width=0.95\linewidth]{fig/B_versions.jpg}
-\caption{Object model comparison at four orbit views: initial (top), initial with light smoothing
-(middle), dilated-mask model (bottom). The initial model has the cleanest silhouette; the dilated
-one keeps more dial detail but shows a white fringe.}
-\label{fig:bversions}
 \end{figure}
 
 \section{Task C: placing the camera in Garden}
@@ -240,13 +227,13 @@ line of sight between 6.2 and 8\,s, where the object is fully hidden, and the la
 return it to a clear view. Depth ordering is not composited: the object Gaussians are merged into
 the scene point cloud, so the rasteriser resolves which splat is in front at every pixel.
 
-\begin{figure}[t]
+\begin{figure*}[t]
 \centering
-\includegraphics[width=0.95\linewidth]{fig/fusion_strip.jpg}
+\includegraphics[width=0.98\linewidth]{fig/fusion_strip.jpg}
 \caption{Fusion frames at 0.0\,s, 6.2\,s and 10.0\,s: the camera rests on the wooden ring, the vase
 hides it completely at 6.2\,s, and it is fully visible again at the end of the arc.}
 \label{fig:fusion}
-\end{figure}
+\end{figure*}
 
 \section{Bonus: grounding, contact shadow and illumination match}
 
@@ -278,7 +265,7 @@ white-background training also survive on the top plate.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.95\linewidth]{fig/bonus.jpg}
+\includegraphics[width=\linewidth]{fig/bonus.jpg}
 \caption{Bonus pass at a matched viewpoint: basic merge (left) versus base alignment +
 grounding + contact shadow + Phong relighting (right). The tilt is gone, the body reads as bright
 as the raw merge, and a local contact shadow anchors it; a directional cast shadow is still

@@ -43,6 +43,9 @@ submission/report/*.blg
 submission/report/*.brf
 submission/report/*.synctex.gz
 submission/report/page-*.png
+submission/report/[A-Za-z]*-[0-9].png
+submission/report/chk*.txt
+submission/report/rows*.png
 submission/report/p-*.png
 submission/report/q-*.png
 submission/report/r-*.png
