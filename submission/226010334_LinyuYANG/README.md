@@ -58,6 +58,12 @@ pip install plyfile opencv-python-headless scipy lpips==0.1.4 imageio imageio-ff
 cd gs/repo && pip install ./submodules/diff-gaussian-rasterization ./submodules/simple-knn
 ```
 
+## Report length
+
+The guide asks for "an English report of at most five pages, excluding references". The delivered
+`report.pdf` is **4 pages including the references** (CVPR two-column, 10 pt), so it is inside the
+limit with one page of headroom.
+
 ## Garden (Task A)
 
 ```bash
