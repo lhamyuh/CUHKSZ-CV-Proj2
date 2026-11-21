@@ -47,8 +47,8 @@ model).
 
 \paragraph{Models.} Garden and the object are trained with the official 3DGS implementation~\cite{kerbl2023}
 (commit \texttt{54c035f}) with $30$k iterations and SH degree 3, on one H800 PCIe (80\,GB),
-20 vCPU and 100\,GB RAM. Garden runs in 21 minutes at full resolution with 4.17\,M Gaussians;
-the object trains in 5 minutes on 285 frames of $406\times720$.
+20 vCPU and 100\,GB RAM. Garden runs in 25 minutes at full resolution with 4.17\,M Gaussians;
+the object trains in $6.5$ minutes on 285 frames of $406\times720$.
 
 \paragraph{Camera handling.} Our renderer builds \texttt{Camera(R, T, FoVx, FoVy)} directly from
 the JSON poses with $R=M_{3\times3}^{\top}$ (camera-to-world) and $T=M_{3\times3+1}$, matching the

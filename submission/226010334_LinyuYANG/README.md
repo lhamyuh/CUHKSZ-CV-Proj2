@@ -6,8 +6,35 @@ Model weights, `cfg_args`, COLMAP model and checksums are kept as the release as
 <https://github.com/lhamyuh/CUHKSZ-CV-Proj2/releases/tag/v2.0-final>
 
 All numbers in `report.pdf` come from the runs described here. Everything was executed on a
-single AutoDL instance (NVIDIA H800 PCIe 80 GB, 20 vCPU, 100 GB RAM, Ubuntu 22.04), with the
-project root `/root/autodl-tmp/CIE6004_ASGN2`.
+single AutoDL instance with the project root `/root/autodl-tmp/CIE6004_ASGN2`.
+
+## Hardware
+
+Measured on the instance with `nvidia-smi`, `lscpu` and the cgroup limits (`cpu.max`,
+`memory.max`); the AutoDL plan is quoted as 20 vCPU / 100 GB RAM, which is what the cgroup
+actually grants.
+
+| component | value |
+|---|---|
+| GPU | NVIDIA H800 PCIe, 81,559 MiB (80 GB), compute capability 9.0 |
+| GPU driver | 570.124.04 |
+| CPU allocation | 20 vCPU (cgroup `cpu.max` = 2000000/100000); host is 2x Intel Xeon Platinum 8458P, 44 cores each |
+| RAM allocation | 100 GiB (cgroup `memory.max` = 107,374,182,400 B) |
+| Data disk | 50 GB overlay at `/root/autodl-tmp` |
+| OS / kernel | Ubuntu 22.04.1 LTS, 5.15.0-140-generic |
+| CUDA toolkit | 11.8 (`/usr/local/cuda` -> `cuda-11.8`, `nvcc` V11.8.89) |
+| PyTorch | 2.1.2+cu118 |
+
+## Training budget
+
+Wall-clock from the first to the last line of each run's log (`logs/*.log`).
+
+| run | steps | resolution | Gaussians | wall clock |
+|---|---|---|---|---|
+| Garden, delivered | 30,000 | 1297x840, 161 views | 4,173,282 | 24 min 55 s |
+| Garden, budget check | 45,000 | 1297x840, 161 views | not delivered | 31 min 46 s (ablation only) |
+| Object, delivered | 30,000 | 406x720, 285 views | 131,972 -> 82,967 after pruning | 6 min 22 s |
+| Object, +2 px mask variant | 30,000 | 406x720, 285 views | 129,512 -> 65,246 | 4 min 22 s |
 
 ## Environment
 
@@ -45,7 +72,7 @@ python code/make_mp4.py --frames runs/garden_base/frames_orbit --out scene/orbit
 python release/tools/evaluate.py release/val runs/garden_base/renders_val runs/garden_base/metrics_val.json
 ```
 
-Seed: 3DGS default (no `--seed` flag); COLMAP initialisation is deterministic. Wall clock: 21 min,
+Seed: 3DGS default (no `--seed` flag); COLMAP initialisation is deterministic. Wall clock: 25 min,
 4,173,282 Gaussians, validation 27.27 dB / 0.8668 / 0.0764.
 
 ## Object (Task B)

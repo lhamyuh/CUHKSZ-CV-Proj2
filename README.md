@@ -30,7 +30,7 @@ in the submission zip and on the GPU server.
 | item | value |
 |---|---|
 | Garden validation (12 views) | PSNR 27.27 / SSIM 0.8668 / LPIPS 0.0764 (baseline 25.73 / 0.7925 / 0.1757) |
-| Garden training | 30k iters, 1297x840, 4.17M Gaussians, 21 min on H800 80GB |
+| Garden training | 30k iters, 1297x840, 4.17M Gaussians, 25 min on H800 80GB |
 | Object split | train 285 / val 33 / test 164 frames, 8-frame gaps |
 | Object SfM | 498/498 frames registered, 10,939 points, 0.61 px reprojection |
 | Mask ablation | masked PSNR 16.23 -> 18.23 dB with +2 px dilation, same budget |
