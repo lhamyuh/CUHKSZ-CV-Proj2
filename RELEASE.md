@@ -12,6 +12,10 @@ course guide asks us to keep the final scene and object models until grading is 
 |---|---|---|
 | `226010334_LinyuYANG.zip` | 45.8 MB | the graded archive: `226010334_LinyuYANG/` with `report.pdf`, `README.md`, `code/`, `renders/` (12 PNG), `scene/orbit.mp4`, `evidence/` (orbit GIF, loss CSV/PNG, stages, ablation), `fusion/orbit.mp4`, `fusion/placement.json`, `object_split.json` |
 | `records_226010334_LinyuYANG.tar.gz` | 922 MB | Garden + object PLY models, both `cfg_args`, COLMAP model, logs, code snapshot, `SHA256SUMS` |
+| `repro_226010334_LinyuYANG.tar.gz` | 44 KB | from-scratch reproduction bundle: `REPRODUCE.md`, `pip freeze`, CUDA/COLMAP/3DGS commit, exact frame list and mask checksums, split, metrics JSON, fusion placement, `SHA256SUMS` |
+
+The GPU instance was released after packaging, so everything needed to rebuild the results lives in
+these three assets plus the course data; nothing else is required from the server.
 
 ## Tracked in git
 
