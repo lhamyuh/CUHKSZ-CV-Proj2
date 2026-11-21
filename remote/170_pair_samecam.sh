@@ -1,0 +1,37 @@
+﻿#!/usr/bin/env bash
+set -uo pipefail
+ROOT=/root/autodl-tmp/CIE6004_ASGN2
+cd $ROOT
+source env/bin/activate
+VIEW=$(python - <<'PY' | tail -1
+import json, numpy as np
+d=json.load(open('/root/autodl-tmp/CIE6004_ASGN2/runs/fusion/path_h.json'))
+M=np.array(d['views'][0]['world_to_camera']); C=-M[:3,:3].T@M[:3,3]
+print(','.join('%.4f'%x for x in C))
+PY
+)
+python - <<'PY'
+import json
+d=json.load(open('/root/autodl-tmp/CIE6004_ASGN2/runs/fusion/path_h.json'))
+one={k:d[k] for k in ('width','height','fx','fy','cx','cy')}; one['views']=[d['views'][0]]
+json.dump(one, open('/root/autodl-tmp/CIE6004_ASGN2/runs/fusion/one_h.json','w'))
+PY
+OBJ=$ROOT/runs/obj_w/point_cloud/iteration_30000/point_cloud_smooth3.ply
+python code/phong_fusion.py --scene $ROOT/runs/garden_base/point_cloud/iteration_30000/point_cloud.ply \
+  --object $OBJ --placement $ROOT/preview/placement_h.json --view_pos="$VIEW" \
+  --ka 1.0 --kd 0.0 --ks 0.0 --weighted_contact 1 --base_align 1 --base_mode percentile \
+  --shadow_strength 0 --ao_strength 0 --scale_boost 1.0 --opacity_add 0 --deglare 0 \
+  --out_scene $ROOT/runs/fusion/basic_h.ply --out_placement $ROOT/preview/placement_basic_h.json 2>&1 | tail -1
+python code/render_views.py --ply $ROOT/runs/fusion/basic_h.ply --cameras $ROOT/runs/fusion/one_h.json --out $ROOT/runs/fusion/pair_basic_h --bg 0 2>&1 | tail -1
+rm -f $ROOT/runs/fusion/basic_h.ply
+python - <<'PY'
+from PIL import Image, ImageDraw
+R='/root/autodl-tmp/CIE6004_ASGN2'; G=f'{R}/preview'
+a=Image.open(f'{R}/runs/fusion/pair_basic_h/frame_000.png').convert('RGB').crop((200,240,900,700)).resize((560,368), Image.LANCZOS)
+b=Image.open(f'{R}/runs/fusion/cfinal_frames/frame_000.png').convert('RGB').crop((200,240,900,700)).resize((560,368), Image.LANCZOS)
+pair=Image.new('RGB',(1120,392),'white')
+for i,(im,t) in enumerate(((a,'basic merge'),(b,'+ base alignment, grounding, shadow, relighting'))):
+    c=Image.new('RGB',(560,392),'white'); c.paste(im,(0,24)); ImageDraw.Draw(c).text((6,6),t,fill='black'); pair.paste(c,(i*560,0))
+pair.save(f'{G}/bonus_pair_final.jpg', quality=90); print('ok')
+PY
+echo PAIR_SAME_DONE
